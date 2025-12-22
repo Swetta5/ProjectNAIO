@@ -1,0 +1,338 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const allItems = items;\nconst cleanItems = [];\nconst discardedItems = [];\nconst seenIds = new Set();\nconst seenContent = new Set();\n\nfor (const item of allItems) {\n  const reviewBody = item.json.review_body;\n  const reviewId = item.json.review_id;\n  \n  // --- NEW CHECK: IS IT ALREADY DONE? ---\n  // If \"ai_reply\" (Column M) is not empty, we skip it!\n  if (item.json.ai_reply && item.json.ai_reply.toString().trim().length > 0) {\n      discardedItems.push({ id: reviewId, reason: \"Already Processed\" });\n      continue;\n  }\n  // --------------------------------------\n\n  // 1. Check Existence\n  if (!reviewBody || typeof reviewBody !== 'string') {\n    discardedItems.push({ id: reviewId, reason: \"Invalid Body\" });\n    continue;\n  }\n\n  // 2. Check Length\n  const normalizedBody = reviewBody.trim().toLowerCase();\n  if (normalizedBody.length < 10) {\n    discardedItems.push({ id: reviewId, reason: \"Too short\" });\n    continue;\n  }\n\n  // 3. Check Duplicates (ID)\n  if (seenIds.has(reviewId)) {\n    discardedItems.push({ id: reviewId, reason: \"Duplicate ID\" });\n    continue;\n  }\n\n  // 4. Check Duplicates (Content)\n  if (seenContent.has(normalizedBody)) {\n    discardedItems.push({ id: reviewId, reason: \"Duplicate Content\" });\n    continue;\n  }\n\n  seenIds.add(reviewId);\n  seenContent.add(normalizedBody);\n  cleanItems.push(item);\n}\n\n// Log what we skipped (Check your console!)\nconsole.log(`Skipped ${discardedItems.length} items.`);\nreturn cleanItems;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -384,
+        -128
+      ],
+      "id": "c18cff72-ba0a-416b-934c-5b676e6d4758",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=You are a Customer Experience AI. Analyze the following customer review.\n\nReview:\n\"\"\"\n{{ $json.review_body }}\n\"\"\"\n\nTask:\n1. Detect the language. If not English, translate it.\n2. Analyze the sentiment (Positive, Neutral, Negative).\n3. Identify main topics (e.g., Shipping, Price, Quality).\n4. Draft a polite, professional response (under 50 words) addressing the specific issue.\n\nOutput Format:\nReturn ONLY a valid JSON object. Do not include markdown formatting like ```json.\n{\n  \"translated_review\": \"...\",\n  \"sentiment\": \"...\",\n  \"topics\": \"...\",\n  \"draft_response\": \"...\"\n} "
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        -160,
+        -128
+      ],
+      "id": "700b78d9-cd13-4b42-8aa8-030733d0825c",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "fTKbKJr7g2RLTINO",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Fetch the original, safe data from the previous node\n// We use the node name \"Code in JavaScript\" because that's where your clean IDs are.\nconst originalData = $('Code in JavaScript').all();\n\nreturn items.map((item, index) => {\n  try {\n    // 2. Extract the text from the AI result\n    let aiText = \"\";\n    \n    // Check for the nested structure shown in your screenshots\n    if (item.json.output && item.json.output[0]?.content) {\n       aiText = item.json.output[0].content[0].text;\n    } else if (item.json.message?.content) {\n       aiText = item.json.message.content;\n    } else {\n       // Fallback: If it's just raw JSON\n       aiText = JSON.stringify(item.json);\n    }\n\n    // 3. Clean the text (Remove ```json markers)\n    const cleanJson = aiText.replace(/```json/g, '').replace(/```/g, '').trim();\n\n    // 4. Parse the AI's data\n    const parsedData = JSON.parse(cleanJson);\n\n    // 5. THE MERGE: Match Row 1 to Row 1\n    return {\n      json: {\n        review_id: originalData[index].json.review_id, // <--- This grabs the REAL ID from the past!\n        ...parsedData\n      }\n    };\n\n  } catch (error) {\n    return {\n      json: {\n        error: \"Merge Failed\",\n        message: error.message\n      }\n    };\n  }\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        192,
+        -128
+      ],
+      "id": "2d3fc946-2a92-4ce2-b36e-6cbfe3fa1535",
+      "name": "Parse AI Response"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1hulSqIqaJz6IcRxDA8jNU3cijHcnG4a_naJC5Wszsbc",
+          "mode": "list",
+          "cachedResultName": "Amazon_Data",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1hulSqIqaJz6IcRxDA8jNU3cijHcnG4a_naJC5Wszsbc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1944113727,
+          "mode": "list",
+          "cachedResultName": "demo",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1hulSqIqaJz6IcRxDA8jNU3cijHcnG4a_naJC5Wszsbc/edit#gid=1944113727"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "review_id": "={{ $json.review_id }}",
+            "sentiment_label": "={{ $json.sentiment }}",
+            "topics": "={{ $json.topics }}",
+            "ai_reply": "={{ $json.draft_response }}",
+            "translated_review": "={{ $json.translated_review }}"
+          },
+          "matchingColumns": [
+            "review_id"
+          ],
+          "schema": [
+            {
+              "id": "review_id",
+              "displayName": "review_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "product_id",
+              "displayName": "product_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reviewer_id",
+              "displayName": "reviewer_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "stars",
+              "displayName": "stars",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "review_body",
+              "displayName": "review_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "review_title",
+              "displayName": "review_title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "language",
+              "displayName": "language",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "product_category",
+              "displayName": "product_category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "translated_review",
+              "displayName": "translated_review",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sentiment_label",
+              "displayName": "sentiment_label",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "topics",
+              "displayName": "topics",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ai_reply",
+              "displayName": "ai_reply",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        416,
+        -128
+      ],
+      "id": "a4191d03-4de9-4596-a164-7097f6bd63a6",
+      "name": "Update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Eh7CAckJc9ngu8Zk",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "documentId": {
+          "__rl": true,
+          "value": "1hulSqIqaJz6IcRxDA8jNU3cijHcnG4a_naJC5Wszsbc",
+          "mode": "list",
+          "cachedResultName": "Amazon_Data",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1hulSqIqaJz6IcRxDA8jNU3cijHcnG4a_naJC5Wszsbc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1944113727,
+          "mode": "list",
+          "cachedResultName": "demo",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1hulSqIqaJz6IcRxDA8jNU3cijHcnG4a_naJC5Wszsbc/edit#gid=1944113727"
+        },
+        "event": "rowAdded",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [
+        -608,
+        -128
+      ],
+      "id": "5ba30d40-e120-4176-83f6-3a24136e75c3",
+      "name": "Google Sheets Trigger",
+      "credentials": {
+        "googleSheetsTriggerOAuth2Api": {
+          "id": "Ge86mIFTJP4sec3A",
+          "name": "Google Sheets Trigger account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "any",
+    "executionTimeout": -1,
+    "availableInMCP": false
+  },
+  "versionId": "24e13bf4-5db3-4a03-b830-c5171d429d91",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "db47be40b3554096e959e3061256f7d5c2e16b1466401169e380776f7c0c811f"
+  },
+  "id": "ac4z0fIPMBTGu50v",
+  "tags": []
+}
