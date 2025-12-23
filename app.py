@@ -4,7 +4,6 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import random
 import time
-import requests  # Required for the Webhook trigger
 
 # --- CONFIGURATION ---
 SHEET_NAME = "Amazon_Data"
@@ -92,11 +91,9 @@ def main():
                 sheet = get_sheet()
                 
                 # --- INTELLIGENT ID GENERATION ---
-                # 1. Calculate Index Number
                 existing_data = sheet.get_all_values()
                 next_index = len(existing_data)
                 
-                # 2. Generate Format-Matching IDs
                 random_num = f"{random.randint(1000000, 9999999)}"
                 clean_lang = lang.lower().strip()
                 
@@ -104,38 +101,22 @@ def main():
                 new_product_id = f"product_{clean_lang}_{random_num}"
                 new_reviewer_id = f"reviewer_{clean_lang}_{random_num}"
                 
-                # 3. Create Row (Aligned to Schema)
                 new_row = [
-                    next_index,      # Column A: Sequential Index
-                    new_review_id,   # Column B: ID
-                    new_product_id,  # Column C: Product ID
-                    new_reviewer_id, # Column D: Reviewer ID
-                    stars,           # Column E: Stars
-                    review_body,     # Column F: Body
-                    review_title,    # Column G: Title
-                    lang,            # Column H: Language
-                    product_cat,     # Column I: Category
-                    "", "", "", ""   # Columns J-M: Empty slots for AI
+                    next_index,      # Column A
+                    new_review_id,   # Column B
+                    new_product_id,  # Column C
+                    new_reviewer_id, # Column D
+                    stars,           # Column E
+                    review_body,     # Column F
+                    review_title,    # Column G
+                    lang,            # Column H
+                    product_cat,     # Column I
+                    "", "", "", ""   # Columns J-M
                 ]
                 
                 sheet.append_row(new_row)
                 st.success(f"Posted! Index: {next_index} | ID: {new_review_id}")
-                
-                # --- TRIGGER N8N (WEBHOOK BYPASS) ---
-                webhook_url = "https://swetta.app.n8n.cloud/webhook-test/review"
-                
-                payload = {
-                    "review_body": review_body,
-                    "review_id": new_review_id,
-                    "row_number": next_index + 1  # 1-based index
-                }
-                
-                try:
-                    requests.post(webhook_url, json=payload)
-                    st.info("⚡ AI Pipeline Triggered Instantly!")
-                except Exception as e:
-                    st.warning(f"Webhook failed to trigger: {e}")
-                # ------------------------------------
+                st.info("⚡ n8n Trigger will pick this up automatically.")
                 
             except Exception as e:
                 st.error(f"Error: {e}")
@@ -144,71 +125,49 @@ def main():
     st.title("📊 Live Customer Insights")
     st.markdown("Real-time analysis powered by **n8n** and **GPT-4o**")
     
-    # Refresh Button
     if st.button("🔄 Refresh Data"):
         st.cache_data.clear()
 
-    # Load Data
     try:
         sheet = get_sheet()
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
         
-        # METRICS SECTION
         if not df.empty:
             c1, c2, c3 = st.columns(3)
-            
-            # Total Count
             c1.metric("Total Reviews", len(df))
             
-            # Negative Sentiment Count
             if 'sentiment_label' in df.columns:
                 neg = len(df[df['sentiment_label'] == "Negative"])
                 c2.metric("Negative Alerts", neg, delta_color="inverse")
             else:
                 c2.metric("Negative Alerts", 0)
 
-            # Average Rating
             if 'stars' in df.columns:
                 try:
-                    # Force convert to numeric just in case
                     avg = pd.to_numeric(df['stars'], errors='coerce').mean()
                     c3.metric("Avg Rating", f"{avg:.1f} ⭐")
                 except:
                     c3.metric("Avg Rating", "N/A")
 
             st.divider()
-
-            # REVIEW FEED (Last 5 Items)
             st.subheader("Latest Processed Reviews")
             
-            # Iterate backwards through the last 5 rows
-            # We use tail(5) and [::-1] to show newest first
             for i, row in df.tail(5)[::-1].iterrows():
                 with st.container(border=True):
                     cols = st.columns([1, 2])
-                    
-                    # Left Column: User Input
                     with cols[0]:
-                        # Handle potential missing keys gracefully
                         r_id = row.get('review_id', 'N/A')
-                        r_lang = row.get('language', 'N/A')
                         r_title = row.get('review_title', 'No Title')
                         r_body = row.get('review_body', 'No Body')
-                        r_cat = row.get('product_category', 'General')
                         
-                        st.caption(f"ID: {r_id} | Lang: {r_lang}")
+                        st.caption(f"ID: {r_id}")
                         st.write(f"**{r_title}**")
                         st.write(f"\"{r_body}\"")
-                        st.caption(f"Category: {r_cat}")
                     
-                    # Right Column: AI Output
                     with cols[1]:
                         sentiment = row.get('sentiment_label')
-                        
-                        # Only show results if AI has processed the row
                         if sentiment:
-                            # Color coding
                             if sentiment == "Positive":
                                 color = "green"
                             elif sentiment == "Negative":
@@ -217,7 +176,6 @@ def main():
                                 color = "gray"
                                 
                             st.markdown(f"**Sentiment:** :{color}[{sentiment}]")
-                            st.markdown(f"**Topics:** `{row.get('topics')}`")
                             st.text_area("🤖 Draft Reply:", value=row.get('ai_reply'), height=100, disabled=True, key=f"txt_{i}")
                         else:
                             st.warning("⚙️ Processing...")
